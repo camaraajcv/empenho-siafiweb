@@ -1,6 +1,6 @@
 # =====================================================
 # GERADOR DE EMPENHO XML – SIAFI (NE001)
-# Versão com layout profissional e formulários dinâmicos
+# Versão com layout profissional – indentação corrigida
 # =====================================================
 
 import streamlit as st
@@ -36,9 +36,6 @@ with st.form("form_empenho"):
         "UG Executora (6 dígitos)",
         max_chars=6
     )
-
-    if ug_executora and (not ug_executora.isdigit() or len(ug_executora) != 6):
-        st.error("A UG Executora deve conter exatamente 6 dígitos numéricos.")
 
     modalidade_dict = {
         "104 - Modalidade Não Se Aplica": "104",
@@ -77,11 +74,10 @@ with st.form("form_empenho"):
 
     st.subheader("Conta Contábil do Passivo Anterior")
 
-cod_conta_contabil = st.text_input(
-    "Código da Conta Contábil (Passivo Anterior)",
-    value="211110101",
-    help="Informe o código da conta contábil a ser utilizada no passivo anterior"
-)
+    cod_conta_contabil = st.text_input(
+        "Código da Conta Contábil (Passivo Anterior)",
+        value="211110101"
+    )
 
     st.subheader("PTRES para Passivo Anterior")
 
@@ -105,6 +101,10 @@ if gerar:
 
     if not ug_executora or not descricao_item:
         st.error("Preencha todos os campos obrigatórios.")
+
+    elif not ug_executora.isdigit() or len(ug_executora) != 6:
+        st.error("A UG Executora deve conter exatamente 6 dígitos numéricos.")
+
     else:
         ptres_finais = ptres_selecionados.copy()
 
