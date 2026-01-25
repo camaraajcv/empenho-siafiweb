@@ -1,172 +1,327 @@
-# =====================================================
-# GERADOR DE EMPENHO XML – SIAFI (NE001)
-# Versão final – layout preservado
-# =====================================================
+import re
+from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
+from collections import defaultdict
+from xml.sax.saxutils import escape
 
 import streamlit as st
-from xml.etree.ElementTree import Element, SubElement, ElementTree
-import io
 
-# ---------------- CONFIGURAÇÃO DA PÁGINA ----------------
+# =========================================================
+# CONFIGURAÇÃO DA PÁGINA
+# =========================================================
 st.set_page_config(
-    page_title="Gerador de Empenho XML – SIAFI",
-    layout="centered"
+    page_title="Gerador XML NE001 - SIAFI",
+    page_icon="📄",
+    layout="wide",
 )
 
-# ---------------- CABEÇALHO + CSS ----------------
-st.markdown(
-    """
-    <style>
-        .main {
-            background-color: #f8f9fa;
-        }
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            max-width: 900px;
-        }
-        h1 {
-            color: #0b3c5d;
-        }
-    </style>
+# =========================================================
+# CSS PERSONALIZADO (VISUAL INSTITUCIONAL)
+# =========================================================
+st.markdown("""
+<style>
+html, body, [class*="css"] {
+    font-family: "Segoe UI", Arial, sans-serif;
+}
 
-    <div style="display:flex; justify-content:center; margin-bottom:15px;">
-        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj_FVD4fXy09Vp7bMnnbgnCWhwyVdeDWyltjZnQKBXyRKEd1C57np-0KiYGVo0gIJI76ksJBJ7mXs-Ybnqe4g-iK1gr5NLbWEAa8P-oObVAdNspC4ANsOhwmCrAlaQ1mw2jyMQaj6ZhJbhz/s1600/como-acessar-o-siafi-no-linux.png"
-             style="max-width:240px; height:auto;">
-    </div>
-    <h1 style="text-align:center; margin-bottom:5px;">Gerador de Empenho XML</h1>
-    <p style="text-align:center; color:#555; font-size:15px;">
-        Ferramenta para geração de XML conforme layout oficial do SIAFI
-    </p>
-    <hr>
-    """,
-    unsafe_allow_html=True
+h1 {
+    color: #003366;
+    font-weight: 600;
+}
+
+h2, h3 {
+    color: #1f4e79;
+}
+
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+.stButton > button {
+    background-color: #003366;
+    color: white;
+    font-weight: bold;
+    border-radius: 6px;
+    padding: 0.6rem 1.5rem;
+    width: 100%;
+}
+
+.stButton > button:hover {
+    background-color: #00509e;
+    color: white;
+}
+
+textarea {
+    font-size: 14px;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #f4f6f9;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# CONSTANTES
+# =========================================================
+ANO_REFERENCIA = "2026"
+IDENTIFICADOR_ORIGEM = "SIAFI-STN"
+COD_FAVORECIDO_PADRAO = "120052"
+
+AMPARO_LEGAL_OPCOES = {
+    "104 - Modalidade Não Se Aplica": "104",
+    "001 - Concorrência": "001",
+    "002 - Tomada de Preços": "002",
+    "003 - Convite": "003",
+    "004 - Concurso": "004",
+    "005 - Leilão": "005",
+    "006 - Pregão": "006",
+    "007 - Diálogo Competitivo": "007",
+    "008 - Dispensa de Licitação": "008",
+    "009 - Inexigibilidade": "009",
+}
+
+TIPO_EMPENHO_OPCOES = {
+    "1 - Empenho Ordinário": "1",
+    "3 - Empenho Estimativo": "3",
+    "5 - Empenho Global": "5",
+}
+
+# =========================================================
+# FUNÇÕES AUXILIARES
+# =========================================================
+def parse_brl_number(s: str) -> Decimal:
+    s = s.strip().replace(".", "").replace(",", ".")
+    return Decimal(s)
+
+def fmt_money(d: Decimal) -> str:
+    return format(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+
+def normalize_cpf(cpf: str) -> str:
+    return re.sub(r"\D", "", cpf or "")
+
+def parse_lines(data_text: str):
+    rows = []
+    for line in (data_text or "").strip().splitlines():
+        parts = re.split(r"\s+", line.strip())
+        if len(parts) != 7:
+            raise ValueError(f"Linha inválida (esperado 7 colunas): {line}")
+
+        esfera, ptres, ndd, fonte, ugr, pi, valor = parts
+
+        if not re.fullmatch(r"\d{6}", ptres):
+            raise ValueError(f"PTRES inválido: {ptres}")
+
+        ndd_digits = re.sub(r"\D", "", ndd)
+        cod_nat_desp = ndd_digits[:6]
+        cod_sub_elemento = ndd_digits[-2:]
+
+        if not re.fullmatch(r"\d{10}", fonte):
+            raise ValueError(f"Fonte inválida: {fonte}")
+
+        rows.append({
+            "esfera": esfera,
+            "ptres": ptres,
+            "codNatDesp": cod_nat_desp,
+            "codSubElemento": cod_sub_elemento,
+            "codFonteRec": fonte,
+            "ugResponsavel": ugr,
+            "codPlanoInterno": pi,
+            "valor": parse_brl_number(valor),
+        })
+
+    if not rows:
+        raise ValueError("Informe ao menos uma linha de dados.")
+
+    return rows
+
+# =========================================================
+# FUNÇÃO PRINCIPAL DE GERAÇÃO DO XML
+# =========================================================
+def build_xml(
+    data_text,
+    cpf,
+    ug_executora,
+    observacao,
+    descricao_item,
+    data_evento,
+    nup,
+    tipo_empenho,
+    cod_amparo_legal,
+    ptres_passivo,
+    conta_passivo,
+):
+    cpf_digits = normalize_cpf(cpf)
+    if len(cpf_digits) != 11:
+        raise ValueError("CPF deve conter 11 dígitos.")
+
+    if not re.fullmatch(r"\d{6}", ug_executora):
+        raise ValueError("UG Executora deve conter 6 dígitos.")
+
+    rows = parse_lines(data_text)
+
+    groups = defaultdict(list)
+    for r in rows:
+        key = (
+            r["esfera"],
+            r["ptres"],
+            r["codNatDesp"],
+            r["codFonteRec"],
+            r["ugResponsavel"],
+            r["codPlanoInterno"],
+        )
+        groups[key].append(r)
+
+    detalhes = []
+
+    for key in sorted(groups.keys()):
+        esfera, ptres, codNatDesp, codFonteRec, ugResp, pi = key
+        items = groups[key]
+        total = sum((i["valor"] for i in items), Decimal("0"))
+
+        passivo_block = ""
+        if ptres in ptres_passivo:
+            passivo_block = f"""
+        <passivoAnterior>
+          <codContaContabil>{conta_passivo}</codContaContabil>
+        </passivoAnterior>
+"""
+
+        itens_xml = []
+        for idx, it in enumerate(items, start=1):
+            val = fmt_money(it["valor"])
+            desc = f"{descricao_item} - ND {codNatDesp} SE {it['codSubElemento']}"
+            itens_xml.append(f"""
+        <itemEmpenho>
+          <numSeqItem>{idx}</numSeqItem>
+          <codSubElemento>{it['codSubElemento']}</codSubElemento>
+          <descricao>{escape(desc)}</descricao>
+          <operacaoItemEmpenho>
+            <tipoOperacaoItemEmpenho>INCLUSAO</tipoOperacaoItemEmpenho>
+            <quantidade>1</quantidade>
+            <vlrUnitario>{val}</vlrUnitario>
+            <vlrOperacao>{val}</vlrOperacao>
+          </operacaoItemEmpenho>
+        </itemEmpenho>
+""")
+
+        detalhes.append(f"""
+    <sb:detalhe>
+      <ns2:orcEmpenhoDados>
+        <ugEmitente>{ug_executora}</ugEmitente>
+        <anoEmpenho>{ANO_REFERENCIA}</anoEmpenho>
+        <tipoEmpenho>{tipo_empenho}</tipoEmpenho>
+        <celulaOrcamentaria>
+          <esfera>{esfera}</esfera>
+          <codPTRES>{ptres}</codPTRES>
+          <codFonteRec>{codFonteRec}</codFonteRec>
+          <codNatDesp>{codNatDesp}</codNatDesp>
+          <ugResponsavel>{ugResp}</ugResponsavel>
+          <codPlanoInterno>{escape(pi)}</codPlanoInterno>
+        </celulaOrcamentaria>
+        <dtEmis>{data_evento.strftime("%Y-%m-%d")}</dtEmis>
+        <txtProcesso>{escape(nup)}</txtProcesso>
+        <vlrEmpenho>{fmt_money(total)}</vlrEmpenho>
+        <codFavorecido>{COD_FAVORECIDO_PADRAO}</codFavorecido>
+        <codAmparoLegal>{cod_amparo_legal}</codAmparoLegal>
+        <txtDescricao>{escape(observacao)}</txtDescricao>
+        {passivo_block}
+        {''.join(itens_xml)}
+      </ns2:orcEmpenhoDados>
+    </sb:detalhe>
+""")
+
+    return f"""<sb:arquivo xmlns:ns2="http://services.orcamentario.siafi.tesouro.fazenda.gov.br/"
+xmlns:sb="http://www.tesouro.gov.br/siafi/submissao">
+  <sb:header>
+    <sb:codigoLayout>NE001</sb:codigoLayout>
+    <sb:dataGeracao>{data_evento.strftime("%d/%m/%Y")}</sb:dataGeracao>
+    <sb:sequencialGeracao>1</sb:sequencialGeracao>
+    <sb:anoReferencia>{ANO_REFERENCIA}</sb:anoReferencia>
+    <sb:ugResponsavel>{ug_executora}</sb:ugResponsavel>
+    <sb:cpfResponsavel>{cpf_digits}</sb:cpfResponsavel>
+    <sb:identificadorOrigem>{IDENTIFICADOR_ORIGEM}</sb:identificadorOrigem>
+  </sb:header>
+  <sb:detalhes>
+    {''.join(detalhes)}
+  </sb:detalhes>
+  <sb:trailler>
+    <sb:quantidadeDetalhe>{len(detalhes)}</sb:quantidadeDetalhe>
+  </sb:trailler>
+</sb:arquivo>
+"""
+
+# =========================================================
+# INTERFACE
+# =========================================================
+st.markdown("<h1 style='text-align:center;'>Gerador de Empenho XML</h1>", unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns(4)
+cpf = col1.text_input("CPF do responsável")
+ug_executora = col2.text_input("UG Executora (6 dígitos)")
+data_evento = col3.date_input("Data do empenho", value=date.today())
+nup = col4.text_input("NUP / Processo")
+
+st.divider()
+observacao = st.text_input("Descrição geral do empenho")
+descricao_item = st.text_input("Descrição dos itens")
+
+st.divider()
+data_text = st.text_area(
+    "Dados (esfera PTRES NDD fonte UGR PI valor)",
+    height=280,
 )
 
-# ---------------- FORMULÁRIO ----------------
-with st.form("form_empenho"):
+with st.sidebar:
+    st.markdown("## ⚙️ Configurações")
 
-    st.subheader("Dados Básicos")
+    tipo_label = st.selectbox("Tipo de Empenho", list(TIPO_EMPENHO_OPCOES.keys()))
+    tipo_empenho = TIPO_EMPENHO_OPCOES[tipo_label]
 
-    ug_executora = st.text_input(
-        "UG Executora (6 dígitos)",
-        max_chars=6
-    )
+    amparo_label = st.selectbox("Modalidade / Amparo Legal", list(AMPARO_LEGAL_OPCOES.keys()))
+    cod_amparo_legal = AMPARO_LEGAL_OPCOES[amparo_label]
 
-    modalidade_dict = {
-        "104 - Modalidade Não Se Aplica": "104",
-        "001 - Concorrência": "001",
-        "002 - Tomada de Preços": "002",
-        "003 - Convite": "003",
-        "004 - Concurso": "004",
-        "005 - Leilão": "005",
-        "006 - Pregão": "006",
-        "007 - Diálogo Competitivo": "007",
-        "008 - Dispensa de Licitação": "008",
-        "009 - Inexigibilidade": "009",
-    }
+    st.markdown("### 💼 Passivo Anterior")
 
-    modalidade = st.selectbox(
-        "Modalidade / Amparo Legal",
-        list(modalidade_dict.keys())
-    )
-
-    tipo_empenho_dict = {
-        "1 - Ordinário": "1",
-        "3 - Estimativo": "3",
-        "5 - Global": "5",
-    }
-
-    tipo_empenho = st.selectbox(
-        "Tipo de Empenho",
-        list(tipo_empenho_dict.keys()),
-        index=1
-    )
-
-    descricao_item = st.text_area(
-        "Descrição do Item de Empenho",
-        height=100
-    )
-
-    st.subheader("Conta Contábil do Passivo Anterior")
-
-    cod_conta_contabil = st.text_input(
-        "Código da Conta Contábil (Passivo Anterior)",
+    conta_passivo = st.text_input(
+        "Conta Contábil do Passivo",
         value="211110101"
     )
 
-    st.subheader("PTRES para Passivo Anterior")
-
-    ptres_padrao = ["171571", "171572", "171573"]
-
-    ptres_selecionados = st.multiselect(
-        "PTRES pré-selecionados",
-        ptres_padrao,
-        default=ptres_padrao
-    )
-
-    ptres_outros = st.text_input(
-        "Outros PTRES (opcional – separar por vírgula)",
-        placeholder="Ex: 123456, 654321"
-    )
-
-    gerar = st.form_submit_button("Gerar XML")
-
-# ---------------- GERAÇÃO DO XML ----------------
-if gerar:
-
-    if not ug_executora or not descricao_item:
-        st.error("Preencha todos os campos obrigatórios.")
-
-    elif not ug_executora.isdigit() or len(ug_executora) != 6:
-        st.error("A UG Executora deve conter exatamente 6 dígitos numéricos.")
-
-    else:
-        ptres_finais = ptres_selecionados.copy()
-
-        if ptres_outros:
-            for p in ptres_outros.split(","):
-                p = p.strip()
-                if p.isdigit() and len(p) == 6:
-                    ptres_finais.append(p)
-
-        root = Element("sb:empenho")
-
-        SubElement(root, "sb:ugResponsavel").text = ug_executora
-        SubElement(root, "codAmparoLegal").text = modalidade_dict[modalidade]
-        SubElement(root, "codTipoEmpenho").text = tipo_empenho_dict[tipo_empenho]
-        SubElement(root, "txtDescricao").text = descricao_item
-
-        passivo = SubElement(root, "passivoAnterior")
-        SubElement(passivo, "codContaContabil").text = cod_conta_contabil
-
-        for pt in ptres_finais:
-            SubElement(passivo, "ptres").text = pt
-
-        xml_bytes = io.BytesIO()
-        ElementTree(root).write(
-            xml_bytes,
-            encoding="utf-8",
-            xml_declaration=True
+    ptres_passivo = set(
+        st.multiselect(
+            "PTRES",
+            default=["168870", "249586", "137835"],
+            options=["168870", "249586", "137835"],
         )
+    )
 
+    extras = st.text_input("Outros PTRES (vírgula)")
+    if extras.strip():
+        for p in extras.split(","):
+            p = p.strip()
+            if re.fullmatch(r"\d{6}", p):
+                ptres_passivo.add(p)
+
+st.divider()
+
+if st.button("Gerar XML NE001"):
+    try:
+        xml = build_xml(
+            data_text,
+            cpf,
+            ug_executora,
+            observacao,
+            descricao_item,
+            data_evento,
+            nup,
+            tipo_empenho,
+            cod_amparo_legal,
+            ptres_passivo,
+            conta_passivo,
+        )
         st.success("XML gerado com sucesso!")
-
-        st.download_button(
-            label="📥 Baixar XML",
-            data=xml_bytes.getvalue(),
-            file_name="empenho_siafi.xml",
-            mime="application/xml"
-        )
-
-# ---------------- RODAPÉ ----------------
-st.markdown(
-    """
-    <hr>
-    <p style="text-align:center; font-size:12px; color:#777;">
-        Ferramenta colaborativa para a Administração Pública Federal •
-        Uso orientativo • Não substitui validações do SIAFI
-    </p>
-    """,
-    unsafe_allow_html=True
-)
+        st.download_button("📥 Baixar XML", xml.encode("utf-8"), "NE001.xml", "application/xml")
+    except Exception as e:
+        st.error(str(e))
