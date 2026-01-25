@@ -75,12 +75,13 @@ with st.form("form_empenho"):
         height=100
     )
 
-    st.subheader("Conta Contábil")
+    st.subheader("Conta Contábil do Passivo Anterior")
 
-    cod_conta_contabil = st.text_input(
-        "Código da Conta Contábil",
-        value="211110101"
-    )
+cod_conta_contabil = st.text_input(
+    "Código da Conta Contábil (Passivo Anterior)",
+    value="211110101",
+    help="Informe o código da conta contábil a ser utilizada no passivo anterior"
+)
 
     st.subheader("PTRES para Passivo Anterior")
 
@@ -148,4 +149,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
