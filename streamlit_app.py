@@ -13,15 +13,29 @@ st.set_page_config(
     layout="centered"
 )
 
-# ---------------- CABEÇALHO ----------------
+# ---------------- CABEÇALHO + CSS ----------------
 st.markdown(
     """
-    <div style="display:flex; justify-content:center; margin-bottom:10px;">
+    <style>
+        .main {
+            background-color: #f8f9fa;
+        }
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 900px;
+        }
+        h1 {
+            color: #0b3c5d;
+        }
+    </style>
+
+    <div style="display:flex; justify-content:center; margin-bottom:15px;">
         <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj_FVD4fXy09Vp7bMnnbgnCWhwyVdeDWyltjZnQKBXyRKEd1C57np-0KiYGVo0gIJI76ksJBJ7mXs-Ybnqe4g-iK1gr5NLbWEAa8P-oObVAdNspC4ANsOhwmCrAlaQ1mw2jyMQaj6ZhJbhz/s1600/como-acessar-o-siafi-no-linux.png"
-             style="max-width:220px; height:auto;">
+             style="max-width:240px; height:auto;">
     </div>
-    <h1 style="text-align:center;">Gerador de Empenho XML</h1>
-    <p style="text-align:center; color:#555;">Ferramenta para geração de XML conforme layout oficial do SIAFI</p>
+    <h1 style="text-align:center; margin-bottom:5px;">Gerador de Empenho XML</h1>
+    <p style="text-align:center; color:#555; font-size:15px;">Ferramenta para geração de XML conforme layout oficial do SIAFI</p>
     <hr>
     """,
     unsafe_allow_html=True
