@@ -1,6 +1,6 @@
 # =====================================================
 # GERADOR DE EMPENHO XML – SIAFI (NE001)
-# Versão com layout profissional – indentação corrigida
+# Versão final – layout preservado
 # =====================================================
 
 import streamlit as st
@@ -35,7 +35,9 @@ st.markdown(
              style="max-width:240px; height:auto;">
     </div>
     <h1 style="text-align:center; margin-bottom:5px;">Gerador de Empenho XML</h1>
-    <p style="text-align:center; color:#555; font-size:15px;">Ferramenta para geração de XML conforme layout oficial do SIAFI</p>
+    <p style="text-align:center; color:#555; font-size:15px;">
+        Ferramenta para geração de XML conforme layout oficial do SIAFI
+    </p>
     <hr>
     """,
     unsafe_allow_html=True
@@ -134,15 +136,19 @@ if gerar:
         SubElement(root, "codAmparoLegal").text = modalidade_dict[modalidade]
         SubElement(root, "codTipoEmpenho").text = tipo_empenho_dict[tipo_empenho]
         SubElement(root, "txtDescricao").text = descricao_item
-        SubElement(root, "codContaContabil").text = cod_conta_contabil
 
         passivo = SubElement(root, "passivoAnterior")
+        SubElement(passivo, "codContaContabil").text = cod_conta_contabil
 
         for pt in ptres_finais:
             SubElement(passivo, "ptres").text = pt
 
         xml_bytes = io.BytesIO()
-        ElementTree(root).write(xml_bytes, encoding="utf-8", xml_declaration=True)
+        ElementTree(root).write(
+            xml_bytes,
+            encoding="utf-8",
+            xml_declaration=True
+        )
 
         st.success("XML gerado com sucesso!")
 
@@ -158,7 +164,8 @@ st.markdown(
     """
     <hr>
     <p style="text-align:center; font-size:12px; color:#777;">
-    Ferramenta colaborativa para a Administração Pública Federal • Uso orientativo • Não substitui validações do SIAFI
+        Ferramenta colaborativa para a Administração Pública Federal •
+        Uso orientativo • Não substitui validações do SIAFI
     </p>
     """,
     unsafe_allow_html=True
