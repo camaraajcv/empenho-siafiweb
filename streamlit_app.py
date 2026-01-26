@@ -117,8 +117,8 @@ def parse_lines(data_text: str):
         cod_nat_desp = ndd_digits[:6]
         cod_sub_elemento = ndd_digits[-2:]
 
-        if not re.fullmatch(r"\d{10}", fonte):
-            raise ValueError(f"Fonte inválida: {fonte}")
+        if not fonte.strip():
+            raise ValueError("Fonte não pode ser vazia.")
 
         rows.append({
             "esfera": esfera,
