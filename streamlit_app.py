@@ -181,7 +181,7 @@ def build_xml(
         total = sum((i["valor"] for i in items), Decimal("0"))
 
         passivo_block = ""
-        if ptres in ptres_passivo or codNatDesp.startswith(("3192", "3392")):
+        if ptres in ptres_passivo or codNatDesp in {"319092", "339092"}:
             passivo_block = f"""
         <passivoAnterior>
           <codContaContabil>{conta_passivo}</codContaContabil>
@@ -285,7 +285,7 @@ with st.sidebar:
     st.markdown("### 💼 Passivo Anterior")
     st.info(
         "Além dos PTRES selecionados, toda Natureza de Despesa de exercício anterior "
-        "(ND iniciada por 3192 ou 3392) também gera a tag de passivo anterior."
+        "(ND 319092 ou 339092) também gera a tag de passivo anterior."
     )
 
     conta_passivo = st.text_input(
