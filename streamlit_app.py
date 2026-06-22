@@ -283,6 +283,10 @@ with st.sidebar:
     cod_amparo_legal = AMPARO_LEGAL_OPCOES[amparo_label]
 
     st.markdown("### 💼 Passivo Anterior")
+    st.info(
+        "Além dos PTRES selecionados, toda Natureza de Despesa de exercício anterior "
+        "(ND iniciada por 3192 ou 3392) também gera a tag de passivo anterior."
+    )
 
     conta_passivo = st.text_input(
         "Conta Contábil do Passivo",
