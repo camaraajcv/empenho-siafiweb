@@ -181,7 +181,7 @@ def build_xml(
         total = sum((i["valor"] for i in items), Decimal("0"))
 
         passivo_block = ""
-        if ptres in ptres_passivo:
+        if ptres in ptres_passivo or codNatDesp.startswith(("3192", "3392")):
             passivo_block = f"""
         <passivoAnterior>
           <codContaContabil>{conta_passivo}</codContaContabil>
