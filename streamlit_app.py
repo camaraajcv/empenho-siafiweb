@@ -88,6 +88,14 @@ TIPO_EMPENHO_OPCOES = {
     "5 - Empenho Global": "5",
 }
 
+# Conta de passivo anterior por Natureza de Despesa e subelemento.
+CONTAS_PASSIVO_ANTERIOR = {
+    ("319092", "94"): "218910100",
+    ("339092", "59"): "211210100",
+    ("339092", "08"): "211310100",
+    ("339092", "93"): "211310100",
+}
+
 # =========================================================
 # FUNÇÕES AUXILIARES
 # =========================================================
@@ -163,6 +171,16 @@ def build_xml(
 
     groups = defaultdict(list)
     for r in rows:
+        conta_passivo_grupo = CONTAS_PASSIVO_ANTERIOR.get(
+            (r["codNatDesp"], r["codSubElemento"])
+        )
+        if conta_passivo_grupo is None and (
+            r["ptres"] in ptres_passivo
+            or r["codNatDesp"] in {"319092", "339092"}
+        ):
+            conta_passivo_grupo = conta_passivo
+
+        # A tag pertence ao empenho: contas diferentes exigem grupos separados.
         key = (
             r["esfera"],
             r["ptres"],
@@ -170,21 +188,22 @@ def build_xml(
             r["codFonteRec"],
             r["ugResponsavel"],
             r["codPlanoInterno"],
+            conta_passivo_grupo,
         )
         groups[key].append(r)
 
     detalhes = []
 
     for key in sorted(groups.keys()):
-        esfera, ptres, codNatDesp, codFonteRec, ugResp, pi = key
+        esfera, ptres, codNatDesp, codFonteRec, ugResp, pi, conta_passivo_grupo = key
         items = groups[key]
         total = sum((i["valor"] for i in items), Decimal("0"))
 
         passivo_block = ""
-        if ptres in ptres_passivo or codNatDesp in {"319092", "339092"}:
+        if conta_passivo_grupo is not None:
             passivo_block = f"""
         <passivoAnterior>
-          <codContaContabil>{conta_passivo}</codContaContabil>
+          <codContaContabil>{conta_passivo_grupo}</codContaContabil>
         </passivoAnterior>
 """
 
@@ -284,8 +303,10 @@ with st.sidebar:
 
     st.markdown("### 💼 Passivo Anterior")
     st.info(
-        "Além dos PTRES selecionados, toda Natureza de Despesa de exercício anterior "
-        "(ND 319092 ou 339092) também gera a tag de passivo anterior."
+        "Além dos PTRES selecionados, as NDs 319092 e 339092 geram a tag de "
+        "passivo anterior. Contas automáticas: 319092/94 → 218910100; "
+        "339092/59 → 211210100; 339092/08 e 339092/93 → 211310100. "
+        "Para as demais combinações, será usada a conta informada abaixo."
     )
 
     conta_passivo = st.text_input(
